@@ -25,4 +25,4 @@ $ RUSTUP_DIST_SERVER=http://127.0.0.1:8000 rustup install stable
 [crate-img]:     https://img.shields.io/crates/v/rustup-mirror.svg
 [crate]:         https://crates.io/crates/rustup-mirror
 [changelog-img]: https://img.shields.io/badge/changelog-online-blue.svg
-[changelog]:     https://github.com/jiegec/rustup-mirror/blob/master/changelog.md
+[changelog]:     https://github.com/jiegec/rustup-mirror/blob/master/CHANGELOG.md
