@@ -1,8 +1,13 @@
 [package]
 name = "rustup-mirror"
 version = "0.1.0"
-authors = ["Jiajie Chen <jiegec@qq.com>"]
+authors = ["Jiajie Chen <noc@jiegec.ac.cn>"]
 edition = "2018"
+description = "Setup a local rustup mirror."
+repository = "https://github.com/jiegec/rustup-mirror"
+readme = "README.md"
+keywords = ["rustup", "mirror"]
+license = "MIT"
 
 [dependencies]
 reqwest = "0.9.9"
