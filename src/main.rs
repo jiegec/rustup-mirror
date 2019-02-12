@@ -1,6 +1,7 @@
 extern crate clap;
 extern crate crypto;
 extern crate filebuffer;
+extern crate indicatif;
 extern crate reqwest;
 extern crate toml;
 extern crate url;
@@ -9,8 +10,9 @@ use clap::{App, Arg};
 use crypto::digest::Digest;
 use crypto::sha2::Sha256;
 use filebuffer::FileBuffer;
+use indicatif::{ProgressBar, ProgressStyle};
 use std::fs::{create_dir_all, File};
-use std::io::{copy, Read, Write};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use toml::Value;
 use url::Url;
@@ -37,15 +39,32 @@ fn download(dir: &str, path: &str) -> PathBuf {
     let file_path = mirror.join(&real_path);
     create_dir_all(file_path.parent().unwrap()).unwrap();
     let mut dest = File::create(file_path).unwrap();
+
     println!("File /{} downloading", real_path);
-    copy(&mut response, &mut dest).unwrap();
+    let length = response.content_length().unwrap();
+    let pb = ProgressBar::new(length);
+    pb.set_style(ProgressStyle::default_bar()
+        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} (ETA {eta_precise})")
+        .progress_chars("#>-"));
+
+    let mut buffer = [0u8; 4096];
+    let mut read = 0;
+
+    while read < length {
+        let len = response.read(&mut buffer).unwrap();
+        dest.write(&buffer[..len]).unwrap();
+        read = read + len as u64;
+        pb.set_position(read);
+    }
+
+    pb.finish_and_clear();
     println!("File /{} downloaded", real_path);
     mirror.join(real_path)
 }
 
 fn main() {
     let args = App::new("rustup-mirror")
-        .version("1.0")
+        .version("0.1.1")
         .author("Jiajie Chen <noc@jiegec.ac.cn>")
         .about("Make a mirror for rustup")
         .arg(
