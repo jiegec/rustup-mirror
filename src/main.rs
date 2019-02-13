@@ -98,7 +98,7 @@ fn main() {
         .value_of("mirror_url")
         .unwrap_or("http://127.0.0.1:8000");
 
-    let channels = ["stable"];
+    let channels = ["stable", "nightly"];
     for channel in channels.iter() {
         let name = format!("dist/channel-rust-{}.toml", channel);
         let file_path = download(orig_path, &name);
