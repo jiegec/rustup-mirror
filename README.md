@@ -11,6 +11,12 @@ How to install
 
 Run `cargo install rustup-mirror`.
 
+Features
+===================================
+
+1. Check if file is already downloaded and check its integrity by comparing sha256 checksum.
+2. Download and replace links in the manifest files.
+
 Example usage
 =====================================
 
@@ -21,6 +27,11 @@ $ cd ./mirror # default directory, see rustup-mirror -h
 $ python3 -m http.server &
 $ RUSTUP_DIST_SERVER=http://127.0.0.1:8000 rustup install stable
 ```
+
+Note:
+
+1. A full clone of a stable distribution takes 16G disk space (as of Feb 2019).
+2. Python3 http.server module does not support Range download. It may fail when a partial downloaded file exists. Do not use this in production.
 
 [crate-img]:     https://img.shields.io/crates/v/rustup-mirror.svg
 [crate]:         https://crates.io/crates/rustup-mirror

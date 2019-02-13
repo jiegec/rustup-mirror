@@ -32,15 +32,14 @@ fn file_sha256(file_path: &Path) -> Option<String> {
 }
 
 fn download(dir: &str, path: &str) -> PathBuf {
-    let real_path = path.replace("%20", " ");
-    let manifest = format!("{}{}", UPSTREAM_URL, real_path);
+    let manifest = format!("{}{}", UPSTREAM_URL, path);
     let mut response = reqwest::get(&manifest).unwrap();
     let mirror = Path::new(dir);
-    let file_path = mirror.join(&real_path);
+    let file_path = mirror.join(&path);
     create_dir_all(file_path.parent().unwrap()).unwrap();
     let mut dest = File::create(file_path).unwrap();
 
-    println!("File /{} downloading", real_path);
+    println!("File /{} downloading", path);
     let length = response.content_length().unwrap();
     let pb = ProgressBar::new(length);
     pb.set_style(ProgressStyle::default_bar()
@@ -58,8 +57,8 @@ fn download(dir: &str, path: &str) -> PathBuf {
     }
 
     pb.finish_and_clear();
-    println!("File /{} downloaded", real_path);
-    mirror.join(real_path)
+    println!("File /{} downloaded", path);
+    mirror.join(path)
 }
 
 fn main() {
@@ -145,7 +144,8 @@ fn main() {
                             Url::parse(pkg_target[&format!("{}url", prefix)].as_str().unwrap())
                                 .unwrap();
                         let mirror = Path::new(mirror_path);
-                        let file = mirror.join(&url.path()[1..]);
+                        let file_name = url.path().replace("%20", " ");
+                        let file = mirror.join(&file_name[1..]);
 
                         let mut need_download = true;
                         if let Some(sha256) = file_sha256(file.as_path()) {
@@ -155,14 +155,14 @@ fn main() {
                         }
 
                         if need_download {
-                            download(mirror_path, &url.path()[1..]);
+                            download(mirror_path, &file_name[1..]);
                         } else {
-                            println!("File {} already downloaded", url.path());
+                            println!("File {} already downloaded, skipping", file_name);
                         }
 
                         pkg_target.insert(
                             format!("{}url", prefix),
-                            Value::String(format!("{}{}", mirror_url, url.path())),
+                            Value::String(format!("{}{}", mirror_url, file_name)),
                         );
                     }
                 }
