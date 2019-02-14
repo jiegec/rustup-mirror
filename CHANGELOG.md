@@ -1,4 +1,4 @@
-v0.2.0 2019-02-14
+v0.2.1 2019-02-14
 ========================
 
 1. Enable nightly channel mirroring.
