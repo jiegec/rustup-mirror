@@ -63,7 +63,7 @@ fn download(dir: &str, path: &str) -> PathBuf {
 
 fn main() {
     let args = App::new("rustup-mirror")
-        .version("0.1.1")
+        .version("0.2.0")
         .author("Jiajie Chen <noc@jiegec.ac.cn>")
         .about("Make a mirror for rustup")
         .arg(
