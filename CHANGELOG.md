@@ -1,3 +1,9 @@
+v0.3.1 2019-02-16
+========================
+
+1. Beta channel is added.
+2. Now support stable and beta toolchain installation with certain date.
+
 v0.3.0 2019-02-15
 ========================
 
