@@ -63,7 +63,7 @@ fn download(dir: &str, path: &str) -> PathBuf {
 
 fn main() {
     let args = App::new("rustup-mirror")
-        .version("0.2.1")
+        .version("0.2.2")
         .author("Jiajie Chen <noc@jiegec.ac.cn>")
         .about("Make a mirror for rustup")
         .arg(
@@ -92,10 +92,10 @@ fn main() {
         )
         .get_matches();
 
-    let orig_path = args.value_of("orig_path").unwrap_or("./orig");
-    let mirror_path = args.value_of("mirror_path").unwrap_or("./mirror");
+    let orig_path = args.value_of("orig").unwrap_or("./orig");
+    let mirror_path = args.value_of("mirror").unwrap_or("./mirror");
     let mirror_url = args
-        .value_of("mirror_url")
+        .value_of("url")
         .unwrap_or("http://127.0.0.1:8000");
 
     let channels = ["stable", "nightly"];
