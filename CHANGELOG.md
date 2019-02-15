@@ -1,3 +1,8 @@
+v0.3.0 2019-02-15
+========================
+
+1. Now support nightly toolchain installation with certain date.
+
 v0.2.2 2019-02-15
 ========================
 

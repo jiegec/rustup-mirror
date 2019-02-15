@@ -11,7 +11,7 @@ use crypto::digest::Digest;
 use crypto::sha2::Sha256;
 use filebuffer::FileBuffer;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::fs::{create_dir_all, File};
+use std::fs::{create_dir_all, File, copy};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use toml::Value;
@@ -63,7 +63,7 @@ fn download(dir: &str, path: &str) -> PathBuf {
 
 fn main() {
     let args = App::new("rustup-mirror")
-        .version("0.2.2")
+        .version("0.3.0")
         .author("Jiajie Chen <noc@jiegec.ac.cn>")
         .about("Make a mirror for rustup")
         .arg(
@@ -181,5 +181,15 @@ fn main() {
         println!("Producing /{}", sha256_name);
         file.write_all(format!("{}  channel-rust-{}.toml", sha256_new_file, channel).as_bytes())
             .unwrap();
+
+        if *channel == "nightly" {
+            let date = value["date"].as_str().unwrap();
+
+            let alt_path = Path::new(mirror_path).join(&format!("dist/{}/channel-rust-{}.toml", date, channel));
+            copy(path, alt_path).unwrap();
+
+            let alt_sha256_new_file_path = Path::new(mirror_path).join(&format!("dist/{}/channel-rust-{}.toml.sha256", date, channel));
+            copy(sha256_new_file_path, alt_sha256_new_file_path).unwrap();
+        }
     }
 }
