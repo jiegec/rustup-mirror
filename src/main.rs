@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 extern crate clap;
 extern crate crypto;
 extern crate filebuffer;
@@ -155,7 +157,7 @@ fn main() {
                         }
 
                         if need_download {
-                            download(mirror_path, &file_name[1..]);
+                            // download(mirror_path, &file_name[1..]);
                         } else {
                             println!("File {} already downloaded, skipping", file_name);
                         }
