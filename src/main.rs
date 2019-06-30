@@ -188,6 +188,7 @@ fn main() {
 
         let alt_name = format!("dist/{}/channel-rust-{}.toml", date, channel);
         let alt_path = Path::new(mirror_path).join(&alt_name);
+        create_dir_all(alt_path.parent().unwrap()).unwrap();
         copy(path, alt_path).unwrap();
         println!("Producing /{}", alt_name);
 
