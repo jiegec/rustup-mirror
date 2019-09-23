@@ -13,7 +13,7 @@ use crypto::digest::Digest;
 use crypto::sha2::Sha256;
 use filebuffer::FileBuffer;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::fs::{create_dir_all, File, copy};
+use std::fs::{copy, create_dir_all, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use toml::Value;
@@ -96,9 +96,7 @@ fn main() {
 
     let orig_path = args.value_of("orig").unwrap_or("./orig");
     let mirror_path = args.value_of("mirror").unwrap_or("./mirror");
-    let mirror_url = args
-        .value_of("url")
-        .unwrap_or("http://127.0.0.1:8000");
+    let mirror_url = args.value_of("url").unwrap_or("http://127.0.0.1:8000");
 
     let channels = ["stable", "beta", "nightly"];
     for channel in channels.iter() {
@@ -157,7 +155,7 @@ fn main() {
                         }
 
                         if need_download {
-                            // download(mirror_path, &file_name[1..]);
+                            download(mirror_path, &file_name[1..]);
                         } else {
                             println!("File {} already downloaded, skipping", file_name);
                         }
@@ -192,7 +190,8 @@ fn main() {
         copy(path, alt_path).unwrap();
         println!("Producing /{}", alt_name);
 
-        let alt_sha256_new_file_name = format!("dist/{}/channel-rust-{}.toml.sha256", date, channel);
+        let alt_sha256_new_file_name =
+            format!("dist/{}/channel-rust-{}.toml.sha256", date, channel);
         let alt_sha256_new_file_path = Path::new(mirror_path).join(&alt_sha256_new_file_name);
         copy(sha256_new_file_path, alt_sha256_new_file_path).unwrap();
         println!("Producing /{}", alt_sha256_new_file_name);
