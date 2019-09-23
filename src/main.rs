@@ -2,6 +2,7 @@
 
 extern crate clap;
 extern crate crypto;
+extern crate failure;
 extern crate filebuffer;
 extern crate indicatif;
 extern crate reqwest;
@@ -11,8 +12,10 @@ extern crate url;
 use clap::{App, Arg};
 use crypto::digest::Digest;
 use crypto::sha2::Sha256;
+use failure::{err_msg, Error};
 use filebuffer::FileBuffer;
 use indicatif::{ProgressBar, ProgressStyle};
+use std::collections::HashSet;
 use std::fs::{copy, create_dir_all, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -33,16 +36,19 @@ fn file_sha256(file_path: &Path) -> Option<String> {
     }
 }
 
-fn download(dir: &str, path: &str) -> PathBuf {
+fn download(dir: &str, path: &str) -> Result<PathBuf, Error> {
     let manifest = format!("{}{}", UPSTREAM_URL, path);
-    let mut response = reqwest::get(&manifest).unwrap();
+    let mut response = reqwest::get(&manifest)?;
     let mirror = Path::new(dir);
     let file_path = mirror.join(&path);
-    create_dir_all(file_path.parent().unwrap()).unwrap();
-    let mut dest = File::create(file_path).unwrap();
+    create_dir_all(file_path.parent().unwrap())?;
+    let mut dest = File::create(file_path)?;
 
     println!("File /{} downloading", path);
-    let length = response.content_length().unwrap();
+    let length = match response.content_length() {
+        None => return Err(err_msg("Not found")),
+        Some(l) => l,
+    };
     let pb = ProgressBar::new(length);
     pb.set_style(ProgressStyle::default_bar()
         .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} (ETA {eta_precise})")
@@ -52,15 +58,15 @@ fn download(dir: &str, path: &str) -> PathBuf {
     let mut read = 0;
 
     while read < length {
-        let len = response.read(&mut buffer).unwrap();
-        dest.write(&buffer[..len]).unwrap();
+        let len = response.read(&mut buffer)?;
+        dest.write(&buffer[..len])?;
         read = read + len as u64;
         pb.set_position(read);
     }
 
     pb.finish_and_clear();
     println!("File /{} downloaded", path);
-    mirror.join(path)
+    Ok(mirror.join(path))
 }
 
 fn main() {
@@ -98,12 +104,15 @@ fn main() {
     let mirror_path = args.value_of("mirror").unwrap_or("./mirror");
     let mirror_url = args.value_of("url").unwrap_or("http://127.0.0.1:8000");
 
+    let mut all_targets = HashSet::new();
+
+    // Fetch rust components
     let channels = ["stable", "beta", "nightly"];
     for channel in channels.iter() {
         let name = format!("dist/channel-rust-{}.toml", channel);
-        let file_path = download(orig_path, &name);
+        let file_path = download(orig_path, &name).unwrap();
         let sha256_name = format!("dist/channel-rust-{}.toml.sha256", channel);
-        let sha256_file_path = download(orig_path, &sha256_name);
+        let sha256_file_path = download(orig_path, &sha256_name).unwrap();
 
         let mut file = File::open(file_path.clone()).unwrap();
         let mut data = String::new();
@@ -138,6 +147,8 @@ fn main() {
                     .as_table_mut()
                     .unwrap();
                 if pkg_target["available"].as_bool().unwrap() {
+                    all_targets.insert(target.clone());
+
                     let prefixes = ["", "xz_"];
                     for prefix in prefixes.iter() {
                         let url =
@@ -171,6 +182,7 @@ fn main() {
 
         let output = value.to_string();
         let path = Path::new(mirror_path).join(&name);
+        create_dir_all(path.parent().unwrap()).unwrap();
         let mut file = File::create(path.clone()).unwrap();
         println!("Producing /{}", name);
         file.write_all(output.as_bytes()).unwrap();
@@ -196,4 +208,46 @@ fn main() {
         copy(sha256_new_file_path, alt_sha256_new_file_path).unwrap();
         println!("Producing /{}", alt_sha256_new_file_name);
     }
+
+    // Fetch rustup self update
+    println!("Downloading rustup self update manifest...");
+    let self_update_manifest_path = download(orig_path, "rustup/release-stable.toml").unwrap();
+
+    let mut self_update_manifest = File::open(self_update_manifest_path.clone()).unwrap();
+    let mut self_update_manifest_data = String::new();
+    self_update_manifest
+        .read_to_string(&mut self_update_manifest_data)
+        .unwrap();
+
+    let self_update_manifest_val = self_update_manifest_data.parse::<Value>().unwrap();
+    assert_eq!(
+        self_update_manifest_val["schema-version"].as_str(),
+        Some("1")
+    );
+
+    let self_version = self_update_manifest_val["version"].as_str().unwrap();
+
+    for target in all_targets {
+        let is_windows = target.find("windows").is_some();
+
+        let ext = if is_windows { ".exe" } else { "" };
+
+        if download(
+            mirror_path,
+            &format!(
+                "rustup/archive/{}/{}/rustup-init{}",
+                self_version, target, ext
+            ),
+        )
+        .is_err()
+        {
+            println!("Failed to fetch rustup-init for target {}, ignored", target);
+        }
+    }
+
+    copy(
+        self_update_manifest_path,
+        Path::new(mirror_path).join("rustup/release-stable.toml"),
+    )
+    .unwrap();
 }
