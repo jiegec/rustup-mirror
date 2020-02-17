@@ -10,7 +10,7 @@ keywords = ["rustup", "mirror"]
 license = "MIT"
 
 [dependencies]
-reqwest = "0.9.9"
+reqwest = { version = "0.10.1", features = ["blocking", "socks"] }
 toml = "0.4.10"
 url = "1.7.2"
 filebuffer = "0.4.0"
