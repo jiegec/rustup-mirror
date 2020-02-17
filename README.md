@@ -21,7 +21,7 @@ Example usage
 =====================================
 
 ```shell
-$ rustup-mirror
+$ rustup-mirror # use HTTPS_PROXY for proxy
 $ # wait for downloading
 $ cd ./mirror # default directory, see rustup-mirror -h
 $ python3 -m http.server &
