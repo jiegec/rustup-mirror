@@ -39,7 +39,7 @@ fn file_sha256(file_path: &Path) -> Option<String> {
 
 fn download(dir: &str, path: &str) -> Result<PathBuf, Error> {
     let manifest = format!("{}{}", UPSTREAM_URL, path);
-    let mut response = reqwest::get(&manifest)?;
+    let mut response = reqwest::blocking::get(&manifest)?;
     let mirror = Path::new(dir);
     let file_path = mirror.join(&path);
     create_dir_all(file_path.parent().unwrap())?;
