@@ -15,9 +15,10 @@ use crypto::digest::Digest;
 use crypto::sha2::Sha256;
 use failure::{err_msg, Error};
 use filebuffer::FileBuffer;
+use glob::glob;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::collections::HashSet;
-use std::fs::{copy, create_dir_all, read_dir, remove_dir_all, File};
+use std::fs::{copy, create_dir_all, read_dir, File, remove_file};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use toml::Value;
@@ -132,7 +133,15 @@ fn main() {
                     if let Ok(date) = NaiveDate::parse_from_str(&file_name, "%Y-%m-%d") {
                         if date < day {
                             println!("Removing Nightly of Date: {}", date);
-                            remove_dir_all(path.path()).expect("remove dir");
+                            let pattern = path.path().join("*nightly*");
+                            for entry in
+                                glob(&pattern.to_str().unwrap()).expect("Failed to read glob pattern")
+                            {
+                                if let Ok(path) = entry {
+                                    println!("Removing {}", path.display());
+                                    remove_file(path).expect("remove file");
+                                }
+                            }
                         }
                     }
                 }
