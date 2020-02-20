@@ -1,5 +1,4 @@
 #![forbid(unsafe_code)]
-#![deny(warnings)]
 
 extern crate clap;
 extern crate crypto;
@@ -10,6 +9,7 @@ extern crate reqwest;
 extern crate toml;
 extern crate url;
 
+use chrono::{Duration, Local, NaiveDate};
 use clap::{App, Arg};
 use crypto::digest::Digest;
 use crypto::sha2::Sha256;
@@ -17,7 +17,7 @@ use failure::{err_msg, Error};
 use filebuffer::FileBuffer;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::collections::HashSet;
-use std::fs::{copy, create_dir_all, File};
+use std::fs::{copy, create_dir_all, read_dir, remove_dir_all, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use toml::Value;
@@ -99,13 +99,46 @@ fn main() {
                 .help("Where mirror is served, e.g. http://127.0.0.1:8000")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("gc")
+                .short("g")
+                .long("gc")
+                .value_name("garbage_collect_days")
+                .help("Keep how many days of nightly toolchains, e.g. 365")
+                .takes_value(true),
+        )
         .get_matches();
 
     let orig_path = args.value_of("orig").unwrap_or("./orig");
     let mirror_path = args.value_of("mirror").unwrap_or("./mirror");
     let mirror_url = args.value_of("url").unwrap_or("http://127.0.0.1:8000");
+    let gc_days = args.value_of("gc");
 
     let mut all_targets = HashSet::new();
+
+    // Garbage collect old nightly versions
+    if let Some(days) = gc_days {
+        let days: i64 = days.parse().expect("days integer");
+        let mirror = Path::new(mirror_path);
+        let dist = mirror.join("dist");
+        let mut day = Local::today().naive_local();
+        day -= Duration::days(days);
+        println!("Nightly before {} will be deleted", day);
+        for path in read_dir(dist).expect("read_dir") {
+            let path = path.unwrap();
+            let file_type = path.file_type().unwrap();
+            if file_type.is_dir() {
+                if let Ok(file_name) = path.file_name().into_string() {
+                    if let Ok(date) = NaiveDate::parse_from_str(&file_name, "%Y-%m-%d") {
+                        if date < day {
+                            println!("Removing Nightly of Date: {}", date);
+                            remove_dir_all(path.path()).expect("remove dir");
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Fetch rust components
     let channels = ["stable", "beta", "nightly"];
@@ -160,15 +193,18 @@ fn main() {
                         let file = mirror.join(&file_name[1..]);
 
                         let hash_file = mirror.join(format!("{}.sha256", &file_name[1..]));
-                        let hash_file_cont = File::open(hash_file.clone()).ok().and_then(|mut f| {
-                            let mut cont = String::new();
-                            f.read_to_string(&mut cont).ok().map(|_| cont)
-                        });
+                        let hash_file_cont =
+                            File::open(hash_file.clone()).ok().and_then(|mut f| {
+                                let mut cont = String::new();
+                                f.read_to_string(&mut cont).ok().map(|_| cont)
+                            });
 
                         let hash_file_missing = hash_file_cont.is_none();
-                        let mut hash_file_cont = hash_file_cont.or_else(|| file_sha256(file.as_path()));
+                        let mut hash_file_cont =
+                            hash_file_cont.or_else(|| file_sha256(file.as_path()));
 
-                        let chksum_upstream = pkg_target[&format!("{}hash", prefix)].as_str().unwrap();
+                        let chksum_upstream =
+                            pkg_target[&format!("{}hash", prefix)].as_str().unwrap();
 
                         let need_download = match hash_file_cont {
                             Some(ref chksum) => chksum_upstream != chksum,
@@ -178,13 +214,19 @@ fn main() {
                         if need_download {
                             download(mirror_path, &file_name[1..]).unwrap();
                             hash_file_cont = file_sha256(file.as_path());
-                            assert_eq!(Some(chksum_upstream), hash_file_cont.as_ref().map(|s| s.as_str()));
+                            assert_eq!(
+                                Some(chksum_upstream),
+                                hash_file_cont.as_ref().map(|s| s.as_str())
+                            );
                         } else {
                             println!("File {} already downloaded, skipping", file_name);
                         }
 
                         if need_download || hash_file_missing {
-                            File::create(hash_file).unwrap().write_all(hash_file_cont.unwrap().as_bytes()).unwrap();
+                            File::create(hash_file)
+                                .unwrap()
+                                .write_all(hash_file_cont.unwrap().as_bytes())
+                                .unwrap();
                             println!("Writing chksum for file {}", file_name);
                         }
 
