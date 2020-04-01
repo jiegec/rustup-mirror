@@ -3,6 +3,7 @@ rustup-mirror
 
 [![Crates.io version][crate-img]][crate]
 [![Changelog][changelog-img]][changelog]
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fjiegec%2Frustup-mirror.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fjiegec%2Frustup-mirror?ref=badge_shield)
 
 Setup a local rustup mirror. For usage, please run `rustup-mirror -h`.
 
@@ -37,3 +38,7 @@ Note:
 [crate]:         https://crates.io/crates/rustup-mirror
 [changelog-img]: https://img.shields.io/badge/changelog-online-blue.svg
 [changelog]:     https://github.com/jiegec/rustup-mirror/blob/master/CHANGELOG.md
+
+
+## License
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fjiegec%2Frustup-mirror.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fjiegec%2Frustup-mirror?ref=badge_large)
