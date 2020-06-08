@@ -17,9 +17,10 @@ filebuffer = "0.4.0"
 glob = "0.3"
 indicatif = "0.14.0"
 reqwest = { version = "0.10", features = ["blocking", "socks"] }
-rust-crypto = "0.2.36"
+ring = "0.16"
 toml = "0.5"
 url = "2.1"
+hex = "0.4"
 
 [package.metadata.deb]
 section = "utils"

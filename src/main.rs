@@ -1,24 +1,14 @@
 #![forbid(unsafe_code)]
 
-extern crate clap;
-extern crate crypto;
-extern crate failure;
-extern crate filebuffer;
-extern crate indicatif;
-extern crate reqwest;
-extern crate toml;
-extern crate url;
-
 use chrono::{Duration, Local, NaiveDate};
 use clap::{App, Arg};
-use crypto::digest::Digest;
-use crypto::sha2::Sha256;
 use failure::{err_msg, Error};
 use filebuffer::FileBuffer;
 use glob::glob;
 use indicatif::{ProgressBar, ProgressStyle};
+use ring::digest;
 use std::collections::HashSet;
-use std::fs::{copy, create_dir_all, read_dir, File, remove_file};
+use std::fs::{copy, create_dir_all, read_dir, remove_file, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use toml::Value;
@@ -30,9 +20,7 @@ fn file_sha256(file_path: &Path) -> Option<String> {
     let file = Path::new(file_path);
     if file.exists() {
         let buffer = FileBuffer::open(&file).unwrap();
-        let mut hasher = Sha256::new();
-        hasher.input(&buffer);
-        Some(hasher.result_str())
+        Some(hex::encode(digest::digest(&digest::SHA256, &buffer)))
     } else {
         None
     }
@@ -134,8 +122,8 @@ fn main() {
                         if date < day {
                             println!("Removing Nightly of Date: {}", date);
                             let pattern = path.path().join("*nightly*");
-                            for entry in
-                                glob(&pattern.to_str().unwrap()).expect("Failed to read glob pattern")
+                            for entry in glob(&pattern.to_str().unwrap())
+                                .expect("Failed to read glob pattern")
                             {
                                 if let Ok(path) = entry {
                                     println!("Removing {}", path.display());
