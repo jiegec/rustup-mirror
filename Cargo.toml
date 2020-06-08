@@ -15,11 +15,11 @@ clap = "2.32.0"
 failure = "0.1.5"
 filebuffer = "0.4.0"
 glob = "0.3"
-indicatif = "0.11.0"
-reqwest = { version = "0.10.1", features = ["blocking", "socks"] }
+indicatif = "0.14.0"
+reqwest = { version = "0.10", features = ["blocking", "socks"] }
 rust-crypto = "0.2.36"
-toml = "0.4.10"
-url = "1.7.2"
+toml = "0.5"
+url = "2.1"
 
 [package.metadata.deb]
 section = "utils"
