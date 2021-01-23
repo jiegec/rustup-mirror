@@ -204,7 +204,7 @@ fn main() {
                                 .unwrap()
                                 .write_all(hash_file_cont.unwrap().as_bytes())
                                 .unwrap();
-                            println!("Writing chksum for file {}", file_name);
+                            println!("Writing checksum for file {}", file_name);
                         }
 
                         pkg_target.insert(
