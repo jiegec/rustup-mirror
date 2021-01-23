@@ -4,11 +4,10 @@ use chrono::{Duration, Local, NaiveDate};
 use clap::{App, Arg};
 use failure::{err_msg, Error};
 use filebuffer::FileBuffer;
-use glob::glob;
 use indicatif::{ProgressBar, ProgressStyle};
 use ring::digest;
 use std::collections::HashSet;
-use std::fs::{copy, create_dir_all, read_dir, remove_file, File};
+use std::fs::{copy, create_dir_all, read_dir, remove_file, remove_dir_all, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use toml::Value;
@@ -103,39 +102,18 @@ fn main() {
     let mirror_url = args.value_of("url").unwrap_or("http://127.0.0.1:8000");
     let gc_days = args.value_of("gc");
 
+    let parsed_gc_days = gc_days.map(|e| {
+        let parsed_days = e.parse::<i64>().expect("Unable to parse gc days");
+        let mut day = Local::today().naive_local();
+        day -= Duration::days(parsed_days);
+        println!("Nightly before {} will be deleted", day);
+        day
+    });
+
     let mut all_targets = HashSet::new();
 
-    // Garbage collect old nightly versions
-    if let Some(days) = gc_days {
-        let days: i64 = days.parse().expect("days integer");
-        let mirror = Path::new(mirror_path);
-        let dist = mirror.join("dist");
-        let mut day = Local::today().naive_local();
-        day -= Duration::days(days);
-        println!("Nightly before {} will be deleted", day);
-        for path in read_dir(dist).expect("read_dir") {
-            let path = path.unwrap();
-            let file_type = path.file_type().unwrap();
-            if file_type.is_dir() {
-                if let Ok(file_name) = path.file_name().into_string() {
-                    if let Ok(date) = NaiveDate::parse_from_str(&file_name, "%Y-%m-%d") {
-                        if date < day {
-                            println!("Removing Nightly of Date: {}", date);
-                            let pattern = path.path().join("*nightly*");
-                            for entry in glob(&pattern.to_str().unwrap())
-                                .expect("Failed to read glob pattern")
-                            {
-                                if let Ok(path) = entry {
-                                    println!("Removing {}", path.display());
-                                    remove_file(path).expect("remove file");
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    // All referenced files
+    let mut referenced = HashSet::new();
 
     // Fetch rust components
     let channels = ["stable", "beta", "nightly"];
@@ -188,6 +166,8 @@ fn main() {
                         let mirror = Path::new(mirror_path);
                         let file_name = url.path().replace("%20", " ");
                         let file = mirror.join(&file_name[1..]);
+
+                        referenced.insert(file.clone());
 
                         let hash_file = mirror.join(format!("{}.sha256", &file_name[1..]));
                         let hash_file_cont =
@@ -306,4 +286,65 @@ fn main() {
         Path::new(mirror_path).join("rustup/release-stable.toml"),
     )
     .unwrap();
+
+    // Garbage collect old nightly builds, and unreferenced stable/beta builds
+    for date_dir in read_dir(Path::new(mirror_path).join("dist")).expect("Unable to read dist dir")
+    {
+        let date_dir = date_dir.unwrap();
+        if !date_dir.file_type().unwrap().is_dir() {
+            // Is metadata
+            continue;
+        }
+
+        let clear_nightly = if let Some(parsed_gc_days) = parsed_gc_days {
+            let dir_name = date_dir.file_name().into_string().unwrap();
+            let parsed_dir_name = NaiveDate::parse_from_str(&dir_name, "%Y-%m-%d").unwrap();
+            parsed_dir_name < parsed_gc_days
+        } else {
+            false
+        };
+
+        // Is there anyone left?
+        let mut perserve_dir = false;
+
+        for file in read_dir(date_dir.path()).expect("inner dir") {
+            let file = file.unwrap();
+            let fname = file.file_name();
+            let fname = fname.to_string_lossy();
+            if fname.ends_with(".sha256") {
+                // Is an hash, will be deleted alongside the hashed file
+                continue;
+            }
+
+            let canonicalized = file.path().canonicalize().unwrap();
+
+            // Filter referenced artifacts. Manifests will never be referenced
+            let to_be_deleted = if referenced.contains(&canonicalized) {
+                false
+            } else if fname.find("nightly").is_some() {
+                // Is nightly artifact or manifest
+                clear_nightly
+            } else {
+                // Is stable/beta artifact or manifest, delete by default
+                true
+            };
+
+            if to_be_deleted {
+                // Delete artifact / manifest and its corresponding hash
+                println!("Deleting file {}[.sha256]", canonicalized.display());
+                remove_file(&canonicalized).unwrap();
+                // Ignore error if the hash is not deleted (e.g. there is no hash present)
+                let mut canonicalized = canonicalized;
+                canonicalized.set_file_name((fname + ".sha256").as_ref());
+                let _ = remove_file(canonicalized);
+            } else {
+                perserve_dir = true;
+            }
+        }
+
+        if !perserve_dir {
+            println!("No useful file left in dir {}, removing the entire directory.", date_dir.path().display());
+            remove_dir_all(date_dir.path()).unwrap();
+        }
+    }
 }
