@@ -1,3 +1,9 @@
+v0.4.3 2021-01-24
+========================
+
+1. Upgrade dependencies.
+2. Improve garbage collect logic.
+
 v0.4.2 2020-06-08
 ========================
 
