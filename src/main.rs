@@ -9,7 +9,7 @@ use ring::digest;
 use std::collections::HashSet;
 use std::fs::{copy, create_dir_all, read_dir, remove_file, remove_dir_all, File};
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use toml::Value;
 use url::Url;
 
@@ -167,7 +167,7 @@ fn main() {
                         let file_name = url.path().replace("%20", " ");
                         let file = mirror.join(&file_name[1..]);
 
-                        referenced.insert(file.clone());
+                        referenced.insert(normalize_path(&file));
 
                         let hash_file = mirror.join(format!("{}.sha256", &file_name[1..]));
                         let hash_file_cont =
@@ -317,9 +317,10 @@ fn main() {
             }
 
             let canonicalized = file.path().canonicalize().unwrap();
+            let normalized = normalize_path(&file.path());
 
             // Filter referenced artifacts. Manifests will never be referenced
-            let to_be_deleted = if referenced.contains(&canonicalized) {
+            let to_be_deleted = if referenced.contains(&normalized) {
                 false
             } else if fname.find("nightly").is_some() {
                 // Is nightly artifact or manifest
@@ -346,5 +347,32 @@ fn main() {
             println!("No useful file left in dir {}, removing the entire directory.", date_dir.path().display());
             remove_dir_all(date_dir.path()).unwrap();
         }
+    }
+
+    pub fn normalize_path(path: &Path) -> PathBuf {
+        let mut components = path.components().peekable();
+        let mut ret = if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
+            components.next();
+            PathBuf::from(c.as_os_str())
+        } else {
+            PathBuf::new()
+        };
+
+        for component in components {
+            match component {
+                Component::Prefix(..) => unreachable!(),
+                Component::RootDir => {
+                    ret.push(component.as_os_str());
+                }
+                Component::CurDir => {}
+                Component::ParentDir => {
+                    ret.pop();
+                }
+                Component::Normal(c) => {
+                    ret.push(c);
+                }
+            }
+        }
+        ret
     }
 }
