@@ -13,6 +13,8 @@ use std::path::{Component, Path, PathBuf};
 use toml::Value;
 use url::Url;
 
+const RELEASE_CHANNELS: [&str; 3] = ["stable", "beta", "nightly"];
+
 const UPSTREAM_URL: &str = "https://static.rust-lang.org/";
 
 fn file_sha256(file_path: &Path) -> Option<String> {
@@ -95,13 +97,23 @@ fn main() {
                 .help("Keep how many days of nightly toolchains, e.g. 365")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("channels")
+                .short("c")
+                .long("channels")
+                .value_name("channels")
+                .help("Which release channel(s) to mirror, e.g. stable,nightly")
+                .takes_value(true)
+                .use_delimiter(true)
+                .possible_values(&RELEASE_CHANNELS),
+        )
         .get_matches();
 
     let orig_path = args.value_of("orig").unwrap_or("./orig");
     let mirror_path = args.value_of("mirror").unwrap_or("./mirror");
     let mirror_url = args.value_of("url").unwrap_or("http://127.0.0.1:8000");
-    let gc_days = args.value_of("gc");
 
+    let gc_days = args.value_of("gc");
     let parsed_gc_days = gc_days.map(|e| {
         let parsed_days = e.parse::<i64>().expect("Unable to parse gc days");
         let mut day = Local::today().naive_local();
@@ -110,13 +122,19 @@ fn main() {
         day
     });
 
+    let channels = args.value_of("channels");
+    let channels = if channels.is_some() {
+        args.values_of("channels").unwrap().collect::<Vec<_>>()
+    } else {
+        RELEASE_CHANNELS.to_vec()
+    };
+
     let mut all_targets = HashSet::new();
 
     // All referenced files
     let mut referenced = HashSet::new();
 
     // Fetch rust components
-    let channels = ["stable", "beta", "nightly"];
     for channel in channels.iter() {
         let name = format!("dist/channel-rust-{}.toml", channel);
         let file_path = download(orig_path, &name).unwrap();
@@ -344,7 +362,10 @@ fn main() {
         }
 
         if !perserve_dir {
-            println!("No useful file left in dir {}, removing the entire directory.", date_dir.path().display());
+            println!(
+                "No useful file left in dir {}, removing the entire directory.",
+                date_dir.path().display()
+            );
             remove_dir_all(date_dir.path()).unwrap();
         }
     }
