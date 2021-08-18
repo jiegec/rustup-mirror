@@ -7,7 +7,7 @@ use filebuffer::FileBuffer;
 use indicatif::{ProgressBar, ProgressStyle};
 use ring::digest;
 use std::collections::HashSet;
-use std::fs::{copy, create_dir_all, read_dir, remove_file, remove_dir_all, File};
+use std::fs::{copy, create_dir_all, read_dir, remove_dir_all, remove_file, File};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use toml::Value;
