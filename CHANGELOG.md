@@ -1,3 +1,8 @@
+v0.5.0 2021-08-18
+========================
+
+1. Add option to specify release channels, thanks @jessebraham
+
 v0.4.4 2021-02-18
 ========================
 
