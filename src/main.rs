@@ -15,6 +15,95 @@ use url::Url;
 
 const RELEASE_CHANNELS: [&str; 3] = ["stable", "beta", "nightly"];
 
+const TARGETS: [&str; 86] = [
+    "aarch64-apple-darwin",
+    "aarch64-apple-ios",
+    "aarch64-apple-ios-sim",
+    "aarch64-fuchsia",
+    "aarch64-linux-android",
+    "aarch64-pc-windows-msvc",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-unknown-linux-musl",
+    "aarch64-unknown-none",
+    "aarch64-unknown-none-softfloat",
+    "armebv7r-none-eabi",
+    "armebv7r-none-eabihf",
+    "arm-linux-androideabi",
+    "arm-unknown-linux-gnueabi",
+    "arm-unknown-linux-gnueabihf",
+    "arm-unknown-linux-musleabi",
+    "arm-unknown-linux-musleabihf",
+    "armv5te-unknown-linux-gnueabi",
+    "armv5te-unknown-linux-musleabi",
+    "armv7a-none-eabi",
+    "armv7-linux-androideabi",
+    "armv7r-none-eabi",
+    "armv7r-none-eabihf",
+    "armv7-unknown-linux-gnueabi",
+    "armv7-unknown-linux-gnueabihf",
+    "armv7-unknown-linux-musleabi",
+    "armv7-unknown-linux-musleabihf",
+    "asmjs-unknown-emscripten",
+    "i586-pc-windows-msvc",
+    "i586-unknown-linux-gnu",
+    "i586-unknown-linux-musl",
+    "i686-linux-android",
+    "i686-pc-windows-gnu",
+    "i686-pc-windows-msvc",
+    "i686-unknown-freebsd",
+    "i686-unknown-linux-gnu",
+    "i686-unknown-linux-musl",
+    "mips64el-unknown-linux-gnuabi64",
+    "mips64el-unknown-linux-muslabi64",
+    "mips64-unknown-linux-gnuabi64",
+    "mips64-unknown-linux-muslabi64",
+    "mipsel-unknown-linux-gnu",
+    "mipsel-unknown-linux-musl",
+    "mips-unknown-linux-gnu",
+    "mips-unknown-linux-musl",
+    "nvptx64-nvidia-cuda",
+    "powerpc64le-unknown-linux-gnu",
+    "powerpc64-unknown-linux-gnu",
+    "powerpc-unknown-linux-gnu",
+    "riscv32imac-unknown-none-elf",
+    "riscv32imc-unknown-none-elf",
+    "riscv32i-unknown-none-elf",
+    "riscv64gc-unknown-linux-gnu",
+    "riscv64gc-unknown-none-elf",
+    "riscv64imac-unknown-none-elf",
+    "s390x-unknown-linux-gnu",
+    "sparc64-unknown-linux-gnu",
+    "sparcv9-sun-solaris",
+    "thumbv6m-none-eabi",
+    "thumbv7em-none-eabi",
+    "thumbv7em-none-eabihf",
+    "thumbv7m-none-eabi",
+    "thumbv7neon-linux-androideabi",
+    "thumbv7neon-unknown-linux-gnueabihf",
+    "thumbv8m.base-none-eabi",
+    "thumbv8m.main-none-eabi",
+    "thumbv8m.main-none-eabihf",
+    "wasm32-unknown-emscripten",
+    "wasm32-unknown-unknown",
+    "wasm32-wasi",
+    "x86_64-apple-darwin",
+    "x86_64-apple-ios",
+    "x86_64-fortanix-unknown-sgx",
+    "x86_64-fuchsia",
+    "x86_64-linux-android",
+    "x86_64-pc-solaris",
+    "x86_64-pc-windows-gnu",
+    "x86_64-pc-windows-msvc",
+    "x86_64-sun-solaris",
+    "x86_64-unknown-freebsd",
+    "x86_64-unknown-illumos",
+    "x86_64-unknown-linux-gnu",
+    "x86_64-unknown-linux-gnux32",
+    "x86_64-unknown-linux-musl",
+    "x86_64-unknown-netbsd",
+    "x86_64-unknown-redox",
+];
+
 const UPSTREAM_URL: &str = "https://static.rust-lang.org/";
 
 fn file_sha256(file_path: &Path) -> Option<String> {
@@ -107,6 +196,16 @@ fn main() {
                 .use_delimiter(true)
                 .possible_values(&RELEASE_CHANNELS),
         )
+        .arg(
+            Arg::with_name("targets")
+                .short("t")
+                .long("targets")
+                .value_name("targets")
+                .help("Which targets to mirror, e.g. x86_64-unknown-linux-gnu,x86_64-apple-darwin")
+                .takes_value(true)
+                .use_delimiter(true)
+                .possible_values(&TARGETS),
+        )
         .get_matches();
 
     let orig_path = args.value_of("orig").unwrap_or("./orig");
@@ -122,12 +221,19 @@ fn main() {
         day
     });
 
-    let channels = args.value_of("channels");
-    let channels = if channels.is_some() {
-        args.values_of("channels").unwrap().collect::<Vec<_>>()
-    } else {
-        RELEASE_CHANNELS.to_vec()
-    };
+    let channels = args
+        .values_of("channels")
+        .map(|v| v.collect::<Vec<_>>())
+        .unwrap_or_else(|| RELEASE_CHANNELS.to_vec());
+    let filter_targets = args
+        .values_of("targets")
+        .map(|v| v.collect::<std::collections::HashSet<_>>())
+        .unwrap_or_else(|| {
+            TARGETS
+                .iter()
+                .cloned()
+                .collect::<std::collections::HashSet<_>>()
+        });
 
     let mut all_targets = HashSet::new();
 
@@ -166,13 +272,13 @@ fn main() {
         for pkg_name in keys {
             let pkg = pkgs.get_mut(&pkg_name).unwrap().as_table_mut().unwrap();
             let pkg_targets = pkg.get_mut("target").unwrap().as_table_mut().unwrap();
-            let targets: Vec<String> = pkg_targets.keys().cloned().collect();
-            for target in targets {
-                let pkg_target = pkg_targets
-                    .get_mut(&target)
-                    .unwrap()
-                    .as_table_mut()
-                    .unwrap();
+            *pkg_targets = pkg_targets
+                .iter()
+                .filter(|(target, _)| filter_targets.contains(target.as_str()))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            for (target, pkg_target) in pkg_targets {
+                let pkg_target = pkg_target.as_table_mut().unwrap();
                 if pkg_target["available"].as_bool().unwrap() {
                     all_targets.insert(target.clone());
 
