@@ -50,8 +50,8 @@ fn download(dir: &str, path: &str) -> Result<PathBuf, Error> {
 
     while read < length {
         let len = response.read(&mut buffer)?;
-        dest.write(&buffer[..len])?;
-        read = read + len as u64;
+        dest.write_all(&buffer[..len])?;
+        read += len as u64;
         pb.set_position(read);
     }
 
@@ -209,10 +209,7 @@ fn main() {
                         if need_download {
                             download(mirror_path, &file_name[1..]).unwrap();
                             hash_file_cont = file_sha256(file.as_path());
-                            assert_eq!(
-                                Some(chksum_upstream),
-                                hash_file_cont.as_ref().map(|s| s.as_str())
-                            );
+                            assert_eq!(Some(chksum_upstream), hash_file_cont.as_deref());
                         } else {
                             println!("File {} already downloaded, skipping", file_name);
                         }
@@ -282,7 +279,7 @@ fn main() {
     let self_version = self_update_manifest_val["version"].as_str().unwrap();
 
     for target in all_targets {
-        let is_windows = target.find("windows").is_some();
+        let is_windows = target.contains("windows");
 
         let ext = if is_windows { ".exe" } else { "" };
 
