@@ -1,3 +1,8 @@
+v0.6.0 2021-09-16
+========================
+
+1. Add option to specify target architectures, thanks @johnlepikhin
+
 v0.5.0 2021-08-18
 ========================
 
