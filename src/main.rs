@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 use chrono::{Duration, Local, NaiveDate};
-use clap::{App, Arg};
+use clap::{Arg, Command};
 use failure::{err_msg, Error};
 use filebuffer::FileBuffer;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -150,60 +150,60 @@ fn download(dir: &str, path: &str) -> Result<PathBuf, Error> {
 }
 
 fn main() {
-    let args = App::new("rustup-mirror")
+    let args = Command::new("rustup-mirror")
         .version("0.3.1")
         .author("Jiajie Chen <noc@jiegec.ac.cn>")
         .about("Make a mirror for rustup")
         .arg(
-            Arg::with_name("orig")
-                .short("o")
+            Arg::new("orig")
+                .short('o')
                 .long("orig")
                 .value_name("orig_path")
                 .help("Where to store original manifest, e.g. ./orig")
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("mirror")
-                .short("m")
+            Arg::new("mirror")
+                .short('m')
                 .long("mirror")
                 .value_name("mirror_path")
                 .help("Where to store mirror files, e.g. ./mirror")
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("url")
-                .short("u")
+            Arg::new("url")
+                .short('u')
                 .long("url")
                 .value_name("mirror_url")
                 .help("Where mirror is served, e.g. http://127.0.0.1:8000")
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("gc")
-                .short("g")
+            Arg::new("gc")
+                .short('g')
                 .long("gc")
                 .value_name("garbage_collect_days")
                 .help("Keep how many days of nightly toolchains, e.g. 365")
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("channels")
-                .short("c")
+            Arg::new("channels")
+                .short('c')
                 .long("channels")
                 .value_name("channels")
                 .help("Which release channel(s) to mirror, e.g. stable,nightly")
                 .takes_value(true)
-                .use_delimiter(true)
+                .use_value_delimiter(true)
                 .possible_values(&RELEASE_CHANNELS),
         )
         .arg(
-            Arg::with_name("targets")
-                .short("t")
+            Arg::new("targets")
+                .short('t')
                 .long("targets")
                 .value_name("targets")
                 .help("Which targets to mirror, e.g. x86_64-unknown-linux-gnu,x86_64-apple-darwin")
                 .takes_value(true)
-                .use_delimiter(true)
+                .use_value_delimiter(true)
                 .possible_values(&TARGETS),
         )
         .get_matches();
