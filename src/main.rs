@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
 
+use anyhow::{anyhow, Error};
 use chrono::{Duration, Local, NaiveDate};
 use clap::{Arg, Command};
-use failure::{err_msg, Error};
 use filebuffer::FileBuffer;
 use indicatif::{ProgressBar, ProgressStyle};
 use ring::digest;
@@ -126,7 +126,7 @@ fn download(dir: &str, path: &str) -> Result<PathBuf, Error> {
 
     println!("File /{} downloading", path);
     let length = match response.content_length() {
-        None => return Err(err_msg("Not found")),
+        None => return Err(anyhow!("Not found")),
         Some(l) => l,
     };
     let pb = ProgressBar::new(length);
