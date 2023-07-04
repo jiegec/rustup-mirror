@@ -215,7 +215,7 @@ fn main() {
     let gc_days = args.value_of("gc");
     let parsed_gc_days = gc_days.map(|e| {
         let parsed_days = e.parse::<i64>().expect("Unable to parse gc days");
-        let mut day = Local::today().naive_local();
+        let mut day = Local::now().date_naive();
         day -= Duration::days(parsed_days);
         println!("Nightly before {} will be deleted", day);
         day
