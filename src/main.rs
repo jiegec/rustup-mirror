@@ -131,7 +131,7 @@ fn download(dir: &str, path: &str) -> Result<PathBuf, Error> {
     };
     let pb = ProgressBar::new(length);
     pb.set_style(ProgressStyle::default_bar()
-        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} (ETA {eta_precise})")
+        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} (ETA {eta_precise})")?
         .progress_chars("#>-"));
 
     let mut buffer = [0u8; 4096];
