@@ -483,7 +483,7 @@ fn main() {
             }
         }
 
-        let output = value.to_string();
+        let output = toml::to_string(&value).unwrap();
         let path = Path::new(mirror_path).join(&name);
         create_dir_all(path.parent().unwrap()).unwrap();
         let mut file = File::create(path.clone()).unwrap();
