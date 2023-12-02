@@ -1,3 +1,14 @@
+v0.7.0 2023-12-02
+========================
+
+1. Fix empty `rust-src` in channel.toml
+2. Fix toml pretty output
+
+v0.6.2 2023-11-11
+========================
+
+1. Bump dependencies and fix deprecations.
+
 v0.6.1 2022-06-04
 ========================
 

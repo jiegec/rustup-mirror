@@ -285,8 +285,8 @@ fn download(upstream_url: &str, dir: &str, path: &str) -> Result<PathBuf, Error>
 
 fn main() {
     let args = Command::new("rustup-mirror")
-        .version("0.3.1")
-        .author("Jiajie Chen <noc@jiegec.ac.cn>")
+        .version("0.7.0")
+        .author("Jiajie Chen <c@jia.je>")
         .about("Make a mirror for rustup")
         .arg(
             Arg::new("orig")
