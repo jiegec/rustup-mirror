@@ -238,7 +238,7 @@ const TARGETS: [&str; 219] = [
     "x86_64h-apple-darwin",
 ];
 
-const UPSTREAM_URL: &str = "https://static.rust-lang.org/";
+const DEFAULT_UPSTREAM_URL: &str = "https://static.rust-lang.org/";
 
 fn file_sha256(file_path: &Path) -> Option<String> {
     let file = Path::new(file_path);
@@ -250,8 +250,8 @@ fn file_sha256(file_path: &Path) -> Option<String> {
     }
 }
 
-fn download(dir: &str, path: &str) -> Result<PathBuf, Error> {
-    let manifest = format!("{}{}", UPSTREAM_URL, path);
+fn download(upstream_url: &str, dir: &str, path: &str) -> Result<PathBuf, Error> {
+    let manifest = format!("{}{}", upstream_url, path);
     let mut response = reqwest::blocking::get(&manifest)?;
     let mirror = Path::new(dir);
     let file_path = mirror.join(&path);
@@ -340,11 +340,23 @@ fn main() {
                 .use_value_delimiter(true)
                 .possible_values(&TARGETS),
         )
+        .arg(
+            Arg::new("upstream_url")
+                .short('U')
+                .long("upstream")
+                .value_name("upstream_url")
+                .default_value(DEFAULT_UPSTREAM_URL)
+                .help("Upstream url to sync from")
+                .takes_value(true),
+        )
         .get_matches();
 
     let orig_path = args.value_of("orig").unwrap_or("./orig");
     let mirror_path = args.value_of("mirror").unwrap_or("./mirror");
     let mirror_url = args.value_of("url").unwrap_or("http://127.0.0.1:8000");
+    let upstream_url = args
+        .value_of("upstream_url")
+        .unwrap_or(DEFAULT_UPSTREAM_URL);
 
     let gc_days = args.value_of("gc");
     let parsed_gc_days = gc_days.map(|e| {
@@ -377,9 +389,9 @@ fn main() {
     // Fetch rust components
     for channel in channels.iter() {
         let name = format!("dist/channel-rust-{}.toml", channel);
-        let file_path = download(orig_path, &name).unwrap();
+        let file_path = download(upstream_url, orig_path, &name).unwrap();
         let sha256_name = format!("dist/channel-rust-{}.toml.sha256", channel);
-        let sha256_file_path = download(orig_path, &sha256_name).unwrap();
+        let sha256_file_path = download(upstream_url, orig_path, &sha256_name).unwrap();
 
         let mut file = File::open(file_path.clone()).unwrap();
         let mut data = String::new();
@@ -447,7 +459,7 @@ fn main() {
                         };
 
                         if need_download {
-                            download(mirror_path, &file_name[1..]).unwrap();
+                            download(upstream_url, mirror_path, &file_name[1..]).unwrap();
                             hash_file_cont = file_sha256(file.as_path());
                             assert_eq!(Some(chksum_upstream), hash_file_cont.as_deref());
                         } else {
@@ -502,7 +514,8 @@ fn main() {
 
     // Fetch rustup self update
     println!("Downloading rustup self update manifest...");
-    let self_update_manifest_path = download(orig_path, "rustup/release-stable.toml").unwrap();
+    let self_update_manifest_path =
+        download(upstream_url, orig_path, "rustup/release-stable.toml").unwrap();
 
     let mut self_update_manifest = File::open(self_update_manifest_path.clone()).unwrap();
     let mut self_update_manifest_data = String::new();
@@ -524,6 +537,7 @@ fn main() {
         let ext = if is_windows { ".exe" } else { "" };
 
         if download(
+            upstream_url,
             mirror_path,
             &format!(
                 "rustup/archive/{}/{}/rustup-init{}",
