@@ -429,7 +429,7 @@ fn main() {
                 // set available to false and do not download
                 // but we will keep this table in the toml, which is required for newer version of
                 // rustup
-                if filter_targets.contains(target.as_str()) || *target == "*" {
+                if !(filter_targets.contains(target.as_str()) || *target == "*") {
                     *pkg_target.get_mut("available").unwrap() = toml::Value::Boolean(false);
                     continue;
                 }
