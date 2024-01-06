@@ -422,13 +422,18 @@ fn main() {
         for pkg_name in keys {
             let pkg = pkgs.get_mut(&pkg_name).unwrap().as_table_mut().unwrap();
             let pkg_targets = pkg.get_mut("target").unwrap().as_table_mut().unwrap();
-            *pkg_targets = pkg_targets
-                .iter()
-                .filter(|(target, _)| filter_targets.contains(target.as_str()) || *target == "*")
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
             for (target, pkg_target) in pkg_targets {
                 let pkg_target = pkg_target.as_table_mut().unwrap();
+
+                // if we don't want to download this target
+                // set available to false and do not download
+                // but we will keep this table in the toml, which is required for newer version of
+                // rustup
+                if filter_targets.contains(target.as_str()) || *target == "*" {
+                    *pkg_target.get_mut("available").unwrap() = toml::Value::Boolean(false);
+                    continue;
+                }
+
                 if pkg_target["available"].as_bool().unwrap() {
                     all_targets.insert(target.clone());
 
