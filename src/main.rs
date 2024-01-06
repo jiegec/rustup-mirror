@@ -289,7 +289,7 @@ fn download(upstream_url: &str, dir: &str, path: &str) -> Result<PathBuf, Error>
 
 fn main() {
     let args = Command::new("rustup-mirror")
-        .version("0.7.1")
+        .version("0.7.2")
         .author("Jiajie Chen <c@jia.je>")
         .about("Make a mirror for rustup")
         .arg(
