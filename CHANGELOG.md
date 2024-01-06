@@ -1,3 +1,8 @@
+v0.7.2 2024-01-06
+========================
+
+1. Fix rustup compatibility: do not remove excluded target, but set available to false
+
 v0.7.1 2024-01-06
 ========================
 
