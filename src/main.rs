@@ -16,12 +16,13 @@ use url::Url;
 const RELEASE_CHANNELS: [&str; 3] = ["stable", "beta", "nightly"];
 
 // rustc --print target-list | awk '{print "    \"" $1 "\","}'
-const TARGETS: [&str; 219] = [
+const TARGETS: [&str; 223] = [
     "aarch64-apple-darwin",
     "aarch64-apple-ios",
     "aarch64-apple-ios-macabi",
     "aarch64-apple-ios-sim",
     "aarch64-apple-tvos",
+    "aarch64-apple-tvos-sim",
     "aarch64-apple-watchos-sim",
     "aarch64-fuchsia",
     "aarch64-kmc-solid_asp3",
@@ -92,12 +93,14 @@ const TARGETS: [&str; 219] = [
     "bpfeb-unknown-none",
     "bpfel-unknown-none",
     "csky-unknown-linux-gnuabiv2",
+    "csky-unknown-linux-gnuabiv2hf",
     "hexagon-unknown-linux-musl",
     "i386-apple-ios",
     "i586-pc-nto-qnx700",
     "i586-pc-windows-msvc",
     "i586-unknown-linux-gnu",
     "i586-unknown-linux-musl",
+    "i586-unknown-netbsd",
     "i686-apple-darwin",
     "i686-linux-android",
     "i686-pc-windows-gnu",
@@ -131,6 +134,7 @@ const TARGETS: [&str; 219] = [
     "mipsel-unknown-linux-gnu",
     "mipsel-unknown-linux-musl",
     "mipsel-unknown-linux-uclibc",
+    "mipsel-unknown-netbsd",
     "mipsel-unknown-none",
     "mipsisa32r6-unknown-linux-gnu",
     "mipsisa32r6el-unknown-linux-gnu",
