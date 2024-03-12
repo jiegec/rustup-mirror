@@ -521,6 +521,24 @@ fn main() {
         println!("Producing /{}", alt_sha256_new_file_name);
     }
 
+    // Fetch latest binary of rustup
+    println!("Downloading latest binary of rustup...");
+    for target in &all_targets {
+        let is_windows = target.contains("windows");
+
+        let ext = if is_windows { ".exe" } else { "" };
+
+        if download(
+            upstream_url,
+            mirror_path,
+            &format!("rustup/dist/{}/rustup-init{}", target, ext),
+        )
+        .is_err()
+        {
+            println!("Failed to fetch rustup-init for target {}, ignored", target);
+        }
+    }
+
     // Fetch rustup self update
     println!("Downloading rustup self update manifest...");
     let self_update_manifest_path =
