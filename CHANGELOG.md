@@ -1,4 +1,9 @@
-v0.8.0 2024-03-16
+v0.8.1 2024-03-12
+========================
+
+1. Do not download "*" target for rustup
+
+v0.8.0 2024-03-12
 ========================
 
 1. Download latest version of rustup-init binary for bootstrapping
