@@ -1,3 +1,8 @@
+v0.8.0 2024-03-16
+========================
+
+1. Download latest version of rustup-init binary for bootstrapping
+
 v0.7.2 2024-01-06
 ========================
 
