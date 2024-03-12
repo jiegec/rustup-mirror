@@ -524,6 +524,10 @@ fn main() {
     // Fetch latest binary of rustup
     println!("Downloading latest binary of rustup...");
     for target in &all_targets {
+        if target == "*" {
+            continue;
+        }
+
         let is_windows = target.contains("windows");
 
         let ext = if is_windows { ".exe" } else { "" };
@@ -559,6 +563,10 @@ fn main() {
     let self_version = self_update_manifest_val["version"].as_str().unwrap();
 
     for target in all_targets {
+        if target == "*" {
+            continue;
+        }
+
         let is_windows = target.contains("windows");
 
         let ext = if is_windows { ".exe" } else { "" };
