@@ -2,7 +2,7 @@
 
 use anyhow::{anyhow, Error};
 use chrono::{Duration, Local, NaiveDate};
-use clap::{Arg, Command};
+use clap::Parser;
 use filebuffer::FileBuffer;
 use indicatif::{ProgressBar, ProgressStyle};
 use ring::digest;
@@ -16,7 +16,7 @@ use url::Url;
 const RELEASE_CHANNELS: [&str; 3] = ["stable", "beta", "nightly"];
 
 // rustc --print target-list | awk '{print "    \"" $1 "\","}'
-const TARGETS: [&str; 239] = [
+const TARGETS: [&str; 271] = [
     "aarch64-apple-darwin",
     "aarch64-apple-ios",
     "aarch64-apple-ios-macabi",
@@ -335,103 +335,62 @@ fn download(upstream_url: &str, dir: &str, path: &str) -> Result<PathBuf, Error>
     Ok(mirror.join(path))
 }
 
+#[derive(Parser)]
+#[command(
+    version,
+    about = "Make a mirror for rustup",
+    author = "Jiajie Chen <c@jia.je>"
+)]
+struct Cli {
+    /// Where to store original manifest
+    #[arg(short, long, default_value = "./orig")]
+    orig: String,
+
+    /// Where to store mirror files
+    #[arg(short, long, default_value = "./mirror")]
+    mirror: String,
+
+    /// Where mirror is served
+    #[arg(short, long, default_value = "http://127.0.0.1:8000")]
+    url: String,
+
+    /// Keep how many days of nightly toolchains, e.g. 365
+    #[arg(short, long)]
+    gc: Option<i64>,
+
+    /// Which release channel(s) to mirror, e.g. stable,nightly
+    #[arg(short, long, value_delimiter = ',', default_values_t = RELEASE_CHANNELS.map(String::from))]
+    channels: Vec<String>,
+
+    /// Which targets to mirror, e.g. x86_64-unknown-linux-gnu,x86_64-apple-darwin
+    #[arg(short, long, value_delimiter = ',', default_values_t = TARGETS.map(String::from))]
+    targets: Vec<String>,
+
+    /// Upstream url to sync from
+    #[arg(short = 'U', long, default_value_t = DEFAULT_UPSTREAM_URL.to_string())]
+    upstream_url: String,
+}
+
 fn main() {
-    let args = Command::new("rustup-mirror")
-        .version("0.7.2")
-        .author("Jiajie Chen <c@jia.je>")
-        .about("Make a mirror for rustup")
-        .arg(
-            Arg::new("orig")
-                .short('o')
-                .long("orig")
-                .value_name("orig_path")
-                .help("Where to store original manifest, e.g. ./orig")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::new("mirror")
-                .short('m')
-                .long("mirror")
-                .value_name("mirror_path")
-                .help("Where to store mirror files, e.g. ./mirror")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::new("url")
-                .short('u')
-                .long("url")
-                .value_name("mirror_url")
-                .help("Where mirror is served, e.g. http://127.0.0.1:8000")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::new("gc")
-                .short('g')
-                .long("gc")
-                .value_name("garbage_collect_days")
-                .help("Keep how many days of nightly toolchains, e.g. 365")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::new("channels")
-                .short('c')
-                .long("channels")
-                .value_name("channels")
-                .help("Which release channel(s) to mirror, e.g. stable,nightly")
-                .takes_value(true)
-                .use_value_delimiter(true)
-                .possible_values(&RELEASE_CHANNELS),
-        )
-        .arg(
-            Arg::new("targets")
-                .short('t')
-                .long("targets")
-                .value_name("targets")
-                .help("Which targets to mirror, e.g. x86_64-unknown-linux-gnu,x86_64-apple-darwin")
-                .takes_value(true)
-                .use_value_delimiter(true)
-                .possible_values(&TARGETS),
-        )
-        .arg(
-            Arg::new("upstream_url")
-                .short('U')
-                .long("upstream")
-                .value_name("upstream_url")
-                .default_value(DEFAULT_UPSTREAM_URL)
-                .help("Upstream url to sync from")
-                .takes_value(true),
-        )
-        .get_matches();
+    let args = Cli::parse();
 
-    let orig_path = args.value_of("orig").unwrap_or("./orig");
-    let mirror_path = args.value_of("mirror").unwrap_or("./mirror");
-    let mirror_url = args.value_of("url").unwrap_or("http://127.0.0.1:8000");
-    let upstream_url = args
-        .value_of("upstream_url")
-        .unwrap_or(DEFAULT_UPSTREAM_URL);
+    let orig_path = &args.orig;
+    let mirror_path = &args.mirror;
+    let mirror_url = &args.url;
+    let upstream_url = &args.upstream_url;
 
-    let gc_days = args.value_of("gc");
-    let parsed_gc_days = gc_days.map(|e| {
-        let parsed_days = e.parse::<i64>().expect("Unable to parse gc days");
+    let parsed_gc_days = args.gc.map(|parsed_days| {
         let mut day = Local::now().date_naive();
         day -= Duration::days(parsed_days);
         println!("Nightly before {} will be deleted", day);
         day
     });
 
-    let channels = args
-        .values_of("channels")
-        .map(|v| v.collect::<Vec<_>>())
-        .unwrap_or_else(|| RELEASE_CHANNELS.to_vec());
+    let channels = args.channels;
     let filter_targets = args
-        .values_of("targets")
-        .map(|v| v.collect::<std::collections::HashSet<_>>())
-        .unwrap_or_else(|| {
-            TARGETS
-                .iter()
-                .cloned()
-                .collect::<std::collections::HashSet<_>>()
-        });
+        .targets
+        .iter()
+        .collect::<std::collections::HashSet<_>>();
 
     let mut all_targets = HashSet::new();
 
@@ -477,7 +436,7 @@ fn main() {
                 // set available to false and do not download
                 // but we will keep this table in the toml, which is required for newer version of
                 // rustup
-                if !(filter_targets.contains(target.as_str()) || *target == "*") {
+                if !(filter_targets.contains(target) || *target == "*") {
                     *pkg_target.get_mut("available").unwrap() = toml::Value::Boolean(false);
                     continue;
                 }
