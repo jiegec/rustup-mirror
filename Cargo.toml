@@ -2,7 +2,7 @@
 name = "rustup-mirror"
 version = "0.9.0"
 authors = ["Jiajie Chen <noc@jiegec.ac.cn>"]
-edition = "2018"
+edition = "2024"
 description = "Setup a local rustup mirror."
 repository = "https://github.com/jiegec/rustup-mirror"
 readme = "README.md"
