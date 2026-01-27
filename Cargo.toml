@@ -14,10 +14,10 @@ chrono = "0.4.19"
 clap = { version = "4.5.32", features = ["derive"] }
 filebuffer = "1.0.0"
 glob = "0.3.0"
-indicatif = "0.17.5"
-reqwest = { version = "0.12.15", features = ["blocking", "socks"] }
+indicatif = "0.18.3"
+reqwest = { version = "0.13.1", features = ["blocking", "socks"] }
 ring = "0.17.12"
-toml = "0.8.1"
+toml = "0.9.11"
 url = "2.2.2"
 hex = "0.4.3"
 anyhow = "1.0.58"
