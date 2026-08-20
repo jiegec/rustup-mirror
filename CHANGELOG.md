@@ -1,3 +1,8 @@
+Unreleased
+========================
+
+1. Add `--keep` option to choose which archive compression format(s) to mirror (e.g. `--keep xz` or `--keep gz`; default is `xz` only). Unkept formats are removed from the served manifest and their already-mirrored files are deleted by url, saving disk space. rustup already prefers `zst > xz > gz`, so functionality is unchanged.
+
 v0.9.0 2025-03-17
 ========================
 

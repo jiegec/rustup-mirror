@@ -1,13 +1,13 @@
 #![forbid(unsafe_code)]
 
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use chrono::{Duration, Local, NaiveDate};
 use clap::Parser;
 use filebuffer::FileBuffer;
 use indicatif::{ProgressBar, ProgressStyle};
 use ring::digest;
 use std::collections::HashSet;
-use std::fs::{copy, create_dir_all, read_dir, remove_dir_all, remove_file, File};
+use std::fs::{File, copy, create_dir_all, read_dir, remove_dir_all, remove_file};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use toml::Value;
@@ -292,6 +292,29 @@ const TARGETS: [&str; 271] = [
 
 const DEFAULT_UPSTREAM_URL: &str = "https://static.rust-lang.org/";
 
+/// A supported archive compression format that can be kept in the mirror.
+/// `prefix` is the manifest url/hash field-name prefix for that format
+/// (gz -> "" using `url`/`hash`, xz -> "xz_", zst -> "zst_").
+struct Compression {
+    name: &'static str,
+    prefix: &'static str,
+}
+
+const KNOWN_COMPRESSIONS: &[Compression] = &[
+    Compression {
+        name: "gz",
+        prefix: "",
+    },
+    Compression {
+        name: "xz",
+        prefix: "xz_",
+    },
+    Compression {
+        name: "zst",
+        prefix: "zst_",
+    },
+];
+
 fn file_sha256(file_path: &Path) -> Option<String> {
     let file = Path::new(file_path);
     if file.exists() {
@@ -369,6 +392,13 @@ struct Cli {
     /// Upstream url to sync from
     #[arg(short = 'U', long, default_value_t = DEFAULT_UPSTREAM_URL.to_string())]
     upstream_url: String,
+
+    /// Which compression format(s) to keep in the mirror, e.g. "gz", "xz" or
+    /// "gz,xz" (default: "xz"). rustup prefers zst > xz > gz when listed, so
+    /// keeping only one format still works. Formats not kept are removed from the
+    /// served manifest and their already-mirrored files are deleted.
+    #[arg(long, value_delimiter = ',', default_value = "xz")]
+    keep: Vec<String>,
 }
 
 fn main() {
@@ -391,6 +421,20 @@ fn main() {
         .targets
         .iter()
         .collect::<std::collections::HashSet<_>>();
+
+    // Which compression formats to keep mirroring. Anything not listed here is
+    // dropped from the served manifest and its already-mirrored files deleted.
+    let keep: HashSet<&str> = args.keep.iter().map(String::as_str).collect();
+    for name in &keep {
+        if !KNOWN_COMPRESSIONS.iter().any(|c| c.name == *name) {
+            let known = KNOWN_COMPRESSIONS
+                .iter()
+                .map(|c| c.name)
+                .collect::<Vec<_>>()
+                .join(", ");
+            panic!("unknown compression format '{name}' (known: {known})");
+        }
+    }
 
     let mut all_targets = HashSet::new();
 
@@ -416,7 +460,7 @@ fn main() {
             &sha256_data[..64]
         );
 
-        let mut value = data.parse::<Value>().unwrap();
+        let mut value = toml::from_str::<Value>(&data).unwrap();
         assert_eq!(value["manifest-version"].as_str(), Some("2"));
         println!(
             "Channel {} date {}",
@@ -444,11 +488,30 @@ fn main() {
                 if pkg_target["available"].as_bool().unwrap() {
                     all_targets.insert(target.clone());
 
-                    let prefixes = ["", "xz_"];
-                    for prefix in prefixes.iter() {
-                        let url =
-                            Url::parse(pkg_target[&format!("{}url", prefix)].as_str().unwrap())
-                                .unwrap();
+                    for compression in KNOWN_COMPRESSIONS {
+                        let url_key = format!("{}url", compression.prefix);
+                        let hash_key = format!("{}hash", compression.prefix);
+
+                        // Upstream may not offer every format for a target (e.g.
+                        // zst is not currently published); skip missing formats.
+                        if !pkg_target.contains_key(&url_key) || !pkg_target.contains_key(&hash_key)
+                        {
+                            continue;
+                        }
+
+                        if !keep.contains(compression.name) {
+                            // This format is not being kept: drop it from the
+                            // served manifest and delete the exact already-mirrored
+                            // file for this url so we reclaim its disk space.
+                            if let Some(url) = pkg_target.get(&url_key).and_then(|v| v.as_str()) {
+                                delete_file_for_url(Path::new(mirror_path), url);
+                            }
+                            pkg_target.remove(&url_key);
+                            pkg_target.remove(&hash_key);
+                            continue;
+                        }
+
+                        let url = Url::parse(pkg_target[&url_key].as_str().unwrap()).unwrap();
                         let mirror = Path::new(mirror_path);
                         let file_name = url.path().replace("%20", " ");
                         let file = mirror.join(&file_name[1..]);
@@ -466,8 +529,7 @@ fn main() {
                         let mut hash_file_cont =
                             hash_file_cont.or_else(|| file_sha256(file.as_path()));
 
-                        let chksum_upstream =
-                            pkg_target[&format!("{}hash", prefix)].as_str().unwrap();
+                        let chksum_upstream = pkg_target[&hash_key].as_str().unwrap();
 
                         let need_download = match hash_file_cont {
                             Some(ref chksum) => chksum_upstream != chksum,
@@ -491,7 +553,7 @@ fn main() {
                         }
 
                         pkg_target.insert(
-                            format!("{}url", prefix),
+                            url_key,
                             Value::String(format!("{}{}", mirror_url, file_name)),
                         );
                     }
@@ -561,7 +623,7 @@ fn main() {
         .read_to_string(&mut self_update_manifest_data)
         .unwrap();
 
-    let self_update_manifest_val = self_update_manifest_data.parse::<Value>().unwrap();
+    let self_update_manifest_val = toml::from_str::<Value>(&self_update_manifest_data).unwrap();
     assert_eq!(
         self_update_manifest_val["schema-version"].as_str(),
         Some("1")
@@ -662,6 +724,27 @@ fn main() {
             remove_dir_all(date_dir.path()).unwrap();
         }
     }
+}
+
+/// Delete a single mirrored distribution archive (and its `.sha256` checksum)
+/// for the exact upstream url that corresponds to a format no longer being kept.
+/// Only url-derived paths are touched, never a blanket glob over the whole mirror.
+fn delete_file_for_url(mirror_path: &Path, url: &str) {
+    let Ok(url) = Url::parse(url) else { return };
+    let file_name = url.path().replace("%20", " ");
+    // Sanity: the url should resolve to a real relative path.
+    if !file_name.starts_with('/') {
+        return;
+    }
+    let file = mirror_path.join(&file_name[1..]);
+    if !file.is_file() {
+        return;
+    }
+    println!("Deleting {} (format not kept)", file.display());
+    let _ = remove_file(&file);
+    let mut sha = file.into_os_string();
+    sha.push(".sha256");
+    let _ = remove_file(PathBuf::from(sha));
 }
 
 pub fn normalize_path(path: &Path) -> PathBuf {
