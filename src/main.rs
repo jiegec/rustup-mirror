@@ -295,24 +295,29 @@ const DEFAULT_UPSTREAM_URL: &str = "https://static.rust-lang.org/";
 
 /// A supported archive compression format that can be kept in the mirror.
 /// `prefix` is the manifest url/hash field-name prefix for that format
-/// (gz -> "" using `url`/`hash`, xz -> "xz_", zst -> "zst_").
+/// (gz -> "" using `url`/`hash`, xz -> "xz_", zst -> "zst_"), and
+/// `archive_ext` is the on-disk file extension of its component archives.
 struct Compression {
     name: &'static str,
     prefix: &'static str,
+    archive_ext: &'static str,
 }
 
 const KNOWN_COMPRESSIONS: &[Compression] = &[
     Compression {
         name: "gz",
         prefix: "",
+        archive_ext: ".tar.gz",
     },
     Compression {
         name: "xz",
         prefix: "xz_",
+        archive_ext: ".tar.xz",
     },
     Compression {
         name: "zst",
         prefix: "zst_",
+        archive_ext: ".tar.zst",
     },
 ];
 
@@ -695,8 +700,15 @@ fn main() {
             let canonicalized = file.path().canonicalize().unwrap();
             let normalized = normalize_path(&file.path());
 
+            // An archive whose format is not being kept (--keep) is pruned
+            // regardless of nightly retention, so the format disappears from
+            // every date directory, not just the currently-synced one.
+            let not_kept_format = is_unkept_format(&keep, &fname);
+
             // Filter referenced artifacts. Manifests will never be referenced
-            let to_be_deleted = if referenced.contains(&normalized) {
+            let to_be_deleted = if not_kept_format {
+                true
+            } else if referenced.contains(&normalized) {
                 false
             } else if fname.find("nightly").is_some() {
                 // Is nightly artifact or manifest
@@ -727,6 +739,17 @@ fn main() {
             remove_dir_all(date_dir.path()).unwrap();
         }
     }
+}
+
+/// Return true if `file_name` is a distribution archive (or its checksum) whose
+/// compression format is not in `keep`, and therefore should be pruned wherever
+/// it appears, including historical nightly date directories.
+fn is_unkept_format(keep: &HashSet<&str>, file_name: &str) -> bool {
+    KNOWN_COMPRESSIONS.iter().any(|c| {
+        !keep.contains(c.name)
+            && (file_name.ends_with(c.archive_ext)
+                || file_name.ends_with(&format!("{}.sha256", c.archive_ext)))
+    })
 }
 
 /// Percent-decode a url path and verify it is an absolute canonical path, then
