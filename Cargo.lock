@@ -1194,6 +1194,7 @@ dependencies = [
  "filebuffer",
  "hex",
  "indicatif",
+ "percent-encoding",
  "reqwest",
  "ring",
  "toml",

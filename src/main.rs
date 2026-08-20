@@ -1,10 +1,11 @@
 #![forbid(unsafe_code)]
 
-use anyhow::{Error, anyhow};
+use anyhow::{Context, Error, anyhow, bail};
 use chrono::{Duration, Local, NaiveDate};
 use clap::Parser;
 use filebuffer::FileBuffer;
 use indicatif::{ProgressBar, ProgressStyle};
+use percent_encoding::percent_decode_str;
 use ring::digest;
 use std::collections::HashSet;
 use std::fs::{File, copy, create_dir_all, read_dir, remove_dir_all, remove_file};
@@ -503,8 +504,10 @@ fn main() {
                             // This format is not being kept: drop it from the
                             // served manifest and delete the exact already-mirrored
                             // file for this url so we reclaim its disk space.
-                            if let Some(url) = pkg_target.get(&url_key).and_then(|v| v.as_str()) {
-                                delete_file_for_url(Path::new(mirror_path), url);
+                            if let Some(url) = pkg_target.get(&url_key).and_then(|v| v.as_str())
+                                && let Err(e) = delete_file_for_url(Path::new(mirror_path), url)
+                            {
+                                eprintln!("Warning: could not delete archive {url}: {e:#}");
                             }
                             pkg_target.remove(&url_key);
                             pkg_target.remove(&hash_key);
@@ -726,25 +729,49 @@ fn main() {
     }
 }
 
-/// Delete a single mirrored distribution archive (and its `.sha256` checksum)
-/// for the exact upstream url that corresponds to a format no longer being kept.
-/// Only url-derived paths are touched, never a blanket glob over the whole mirror.
-fn delete_file_for_url(mirror_path: &Path, url: &str) {
-    let Ok(url) = Url::parse(url) else { return };
-    let file_name = url.path().replace("%20", " ");
-    // Sanity: the url should resolve to a real relative path.
-    if !file_name.starts_with('/') {
-        return;
+/// Percent-decode a url path and verify it is an absolute canonical path, then
+/// return the corresponding file path under `mirror_path`. `.`/`..` components
+/// and non-absolute paths are rejected so the result can never escape the mirror.
+fn mirror_file_path(mirror_path: &Path, url_path: &str) -> Result<PathBuf, Error> {
+    let decoded = percent_decode_str(url_path)
+        .decode_utf8()
+        .with_context(|| {
+            format!("path {url_path} contains invalid percent-encoding or non-UTF-8")
+        })?;
+    let rel = Path::new(decoded.as_ref());
+    if !rel.is_absolute() {
+        bail!("url path {url_path} is not absolute");
     }
-    let file = mirror_path.join(&file_name[1..]);
-    if !file.is_file() {
-        return;
+    let mut target = mirror_path.to_path_buf();
+    for component in rel.components() {
+        match component {
+            Component::RootDir | Component::Prefix(_) => {}
+            Component::CurDir | Component::ParentDir => {
+                bail!("url path {url_path} is not canonical");
+            }
+            Component::Normal(seg) => target.push(seg),
+        }
     }
-    println!("Deleting {} (format not kept)", file.display());
-    let _ = remove_file(&file);
-    let mut sha = file.into_os_string();
-    sha.push(".sha256");
-    let _ = remove_file(PathBuf::from(sha));
+    Ok(target)
+}
+
+/// Delete a mirror distribution archive and its `.sha256` checksum for the exact
+/// upstream url that corresponds to a format no longer being kept. Only
+/// url-derived paths are touched, never a blanket glob over the whole mirror.
+/// Both the archive and its checksum go through the same sanitized path handling.
+fn delete_file_for_url(mirror_path: &Path, url: &str) -> Result<(), Error> {
+    let url = Url::parse(url)?;
+    let archive = mirror_file_path(mirror_path, url.path())?;
+    let checksum = mirror_file_path(mirror_path, &format!("{}.sha256", url.path()))?;
+
+    for target in [archive, checksum] {
+        if target.is_file() {
+            remove_file(&target)
+                .with_context(|| format!("failed to delete {}", target.display()))?;
+            println!("Deleted {} (format not kept)", target.display());
+        }
+    }
+    Ok(())
 }
 
 pub fn normalize_path(path: &Path) -> PathBuf {
