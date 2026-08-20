@@ -1,3 +1,9 @@
+v0.11.0 2026-08-20
+========================
+
+1. `--keep` now also prunes unkept compression formats from historical nightly date directories (not just the currently-synced date), so e.g. keep-xz mode cleans up old `.tar.gz` files too.
+2. Update the supported `TARGETS` list from `rustc --print target-list` (rustc 1.97.1, 322 targets).
+
 v0.10.0 2026-08-20
 ========================
 

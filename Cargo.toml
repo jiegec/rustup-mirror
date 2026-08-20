@@ -1,6 +1,6 @@
 [package]
 name = "rustup-mirror"
-version = "0.10.0"
+version = "0.11.0"
 authors = ["Jiajie Chen <c@jia.je>"]
 edition = "2024"
 description = "Setup a local rustup mirror."
