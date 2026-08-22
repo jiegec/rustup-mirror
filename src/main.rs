@@ -446,6 +446,11 @@ struct Cli {
     #[arg(short, long, value_delimiter = ',', default_values_t = TARGETS.map(String::from))]
     targets: Vec<String>,
 
+    /// Keep unmirrored targets available in channel metadata. Their components
+    /// are still not downloaded and their metadata remains unchanged.
+    #[arg(long)]
+    keep_unmirrored_targets_available: bool,
+
     /// Upstream url to sync from
     #[arg(short = 'U', long, default_value_t = DEFAULT_UPSTREAM_URL.to_string())]
     upstream_url: String,
@@ -534,11 +539,13 @@ fn main() {
                 let pkg_target = pkg_target.as_table_mut().unwrap();
 
                 // if we don't want to download this target
-                // set available to false and do not download
-                // but we will keep this table in the toml, which is required for newer version of
-                // rustup
+                // do not download it. By default, mark it unavailable while
+                // retaining its table, which is required for newer rustup.
+                // Optionally leave its upstream metadata entirely unchanged.
                 if !(filter_targets.contains(target) || *target == "*") {
-                    *pkg_target.get_mut("available").unwrap() = toml::Value::Boolean(false);
+                    if !args.keep_unmirrored_targets_available {
+                        *pkg_target.get_mut("available").unwrap() = toml::Value::Boolean(false);
+                    }
                     continue;
                 }
 

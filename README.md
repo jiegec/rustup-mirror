@@ -18,6 +18,7 @@ Features
 1. Check if file is already downloaded and check its integrity by comparing sha256 checksum.
 2. Download and replace links in the manifest files.
 3. Use `--keep` to choose which compression format(s) to mirror (e.g. `--keep xz` or `--keep gz`; default is `xz` only). Unkept archives are removed from the served manifest and their already-mirrored files are deleted, saving disk space. rustup prefers `zst > xz > gz` when listed, so installs still work.
+4. Use `--keep-unmirrored-targets-available` to leave metadata for targets excluded by `--targets` unchanged while still skipping their component downloads. Without this flag, excluded targets are marked `available = false`.
 
 Example usage
 =====================================
