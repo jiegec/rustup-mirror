@@ -1,4 +1,4 @@
-Unreleased
+v0.12.0 2026-09-25
 ========================
 
 1. Retry transient download failures with exponential backoff (`--retries`, default 3), and report an error instead of panicking if a download still fails.
