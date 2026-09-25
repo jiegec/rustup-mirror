@@ -382,37 +382,129 @@ fn file_sha256(file_path: &Path) -> Option<String> {
     }
 }
 
-fn download(upstream_url: &str, dir: &str, path: &str) -> Result<PathBuf, Error> {
+/// Base delay before the first download retry. Each subsequent retry doubles
+/// it, so a flaky link has time to recover instead of being hammered.
+const DOWNLOAD_RETRY_BASE_DELAY: std::time::Duration = std::time::Duration::from_secs(2);
+/// Upper bound on the exponential backoff delay, so a large `--retries` value
+/// cannot make the tool wait for an absurd amount of time.
+const MAX_DOWNLOAD_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Exponential backoff delay before the retry that follows a failed `attempt`
+/// (1-based: the delay after the first failure is `DOWNLOAD_RETRY_BASE_DELAY`).
+fn download_retry_delay(attempt: u32) -> std::time::Duration {
+    // Cap the shift before multiplying so this cannot overflow for huge values.
+    let shift = attempt.saturating_sub(1).min(5);
+    (DOWNLOAD_RETRY_BASE_DELAY * (1u32 << shift)).min(MAX_DOWNLOAD_RETRY_DELAY)
+}
+
+/// A non-retryable HTTP error (e.g. 404). Repeating the request cannot make it
+/// succeed, so it is reported immediately instead of consuming retry attempts.
+#[derive(Debug)]
+struct FatalHttpStatus(reqwest::StatusCode);
+
+impl std::fmt::Display for FatalHttpStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "server returned HTTP status {}", self.0)
+    }
+}
+
+impl std::error::Error for FatalHttpStatus {}
+
+/// Transient failures (timeouts, connection resets, truncated bodies, 5xx and
+/// 429) are worth retrying; permanent 4xx responses are not.
+fn is_retryable(err: &Error) -> bool {
+    err.downcast_ref::<FatalHttpStatus>().is_none()
+}
+
+/// Download `path` from `upstream_url` into `dir`, retrying transient failures
+/// up to `retries` times with exponential backoff. Returns a proper error (never
+/// panics) once all attempts are exhausted.
+fn download(upstream_url: &str, dir: &str, path: &str, retries: u32) -> Result<PathBuf, Error> {
     let manifest = format!("{}{}", upstream_url, path);
-    let mut response = reqwest::blocking::get(&manifest)?;
     let mirror = Path::new(dir);
-    let file_path = mirror.join(&path);
-    create_dir_all(file_path.parent().unwrap())?;
-    let mut dest = File::create(file_path)?;
+    let file_path = mirror.join(path);
+
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        match download_once(&manifest, &file_path, path) {
+            Ok(()) => return Ok(file_path),
+            Err(err) if is_retryable(&err) && attempt <= retries => {
+                let delay = download_retry_delay(attempt);
+                eprintln!(
+                    "Download of /{path} failed on attempt {attempt} ({err:#}); retrying in {delay:?}"
+                );
+                std::thread::sleep(delay);
+            }
+            Err(err) => {
+                return Err(err).with_context(|| {
+                    format!("failed to download /{path} after {attempt} attempt(s)")
+                });
+            }
+        }
+    }
+}
+
+fn download_once(url: &str, file_path: &Path, path: &str) -> Result<(), Error> {
+    let mut response = reqwest::blocking::get(url).with_context(|| format!("requesting {url}"))?;
+    let status = response.status();
+    if !status.is_success() {
+        // Most 4xx responses are permanent, so do not retry them. 408/429 are
+        // exceptions: they explicitly ask the client to try again later.
+        let retryable_client_error = matches!(
+            status,
+            reqwest::StatusCode::REQUEST_TIMEOUT | reqwest::StatusCode::TOO_MANY_REQUESTS
+        );
+        if status.is_client_error() && !retryable_client_error {
+            return Err(FatalHttpStatus(status).into());
+        }
+        bail!("server returned HTTP status {status} for {url}");
+    }
+
+    let length = response
+        .content_length()
+        .ok_or_else(|| anyhow!("response for {url} did not include a content length"))?;
+
+    let parent = file_path
+        .parent()
+        .ok_or_else(|| anyhow!("no parent directory for {}", file_path.display()))?;
+    create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+    let mut dest =
+        File::create(file_path).with_context(|| format!("creating {}", file_path.display()))?;
 
     println!("File /{} downloading", path);
-    let length = match response.content_length() {
-        None => return Err(anyhow!("Not found")),
-        Some(l) => l,
-    };
     let pb = ProgressBar::new(length);
     pb.set_style(ProgressStyle::default_bar()
         .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} (ETA {eta_precise})")?
         .progress_chars("#>-"));
 
-    let mut buffer = [0u8; 4096];
-    let mut read = 0;
+    let result = (|| -> Result<(), Error> {
+        let mut buffer = [0u8; 4096];
+        let mut read = 0u64;
 
-    while read < length {
-        let len = response.read(&mut buffer)?;
-        dest.write_all(&buffer[..len])?;
-        read += len as u64;
-        pb.set_position(read);
-    }
+        while read < length {
+            let len = response
+                .read(&mut buffer)
+                .with_context(|| format!("reading response body for {url}"))?;
+            // A short read means the connection was closed early; without this
+            // the loop would spin forever on a truncated body.
+            if len == 0 {
+                bail!("unexpected end of response for {url} after {read} of {length} bytes");
+            }
+            dest.write_all(&buffer[..len])?;
+            read += len as u64;
+            pb.set_position(read);
+        }
+        dest.flush()?;
+        Ok(())
+    })();
 
+    // Clear the bar on both success and failure so retries do not stack bars.
     pb.finish_and_clear();
+    result.with_context(|| format!("downloading {url}"))?;
+
     println!("File /{} downloaded", path);
-    Ok(mirror.join(path))
+    Ok(())
 }
 
 #[derive(Parser)]
@@ -455,6 +547,11 @@ struct Cli {
     #[arg(short = 'U', long, default_value_t = DEFAULT_UPSTREAM_URL.to_string())]
     upstream_url: String,
 
+    /// How many times to retry a failed download before giving up. Every file
+    /// is attempted once plus this many retries, with exponential backoff.
+    #[arg(long, default_value_t = 3)]
+    retries: u32,
+
     /// Which compression format(s) to keep in the mirror, e.g. "gz", "xz" or
     /// "gz,xz" (default: "xz"). rustup prefers zst > xz > gz when listed, so
     /// keeping only one format still works. Formats not kept are removed from the
@@ -463,13 +560,14 @@ struct Cli {
     keep: Vec<String>,
 }
 
-fn main() {
+fn main() -> Result<(), Error> {
     let args = Cli::parse();
 
     let orig_path = &args.orig;
     let mirror_path = &args.mirror;
     let mirror_url = &args.url;
     let upstream_url = &args.upstream_url;
+    let retries = args.retries;
 
     let parsed_gc_days = args.gc.map(|parsed_days| {
         let mut day = Local::now().date_naive();
@@ -494,7 +592,7 @@ fn main() {
                 .map(|c| c.name)
                 .collect::<Vec<_>>()
                 .join(", ");
-            panic!("unknown compression format '{name}' (known: {known})");
+            bail!("unknown compression format '{name}' (known: {known})");
         }
     }
 
@@ -506,9 +604,9 @@ fn main() {
     // Fetch rust components
     for channel in channels.iter() {
         let name = format!("dist/channel-rust-{}.toml", channel);
-        let file_path = download(upstream_url, orig_path, &name).unwrap();
+        let file_path = download(upstream_url, orig_path, &name, retries)?;
         let sha256_name = format!("dist/channel-rust-{}.toml.sha256", channel);
-        let sha256_file_path = download(upstream_url, orig_path, &sha256_name).unwrap();
+        let sha256_file_path = download(upstream_url, orig_path, &sha256_name, retries)?;
 
         let mut file = File::open(file_path.clone()).unwrap();
         let mut data = String::new();
@@ -603,9 +701,16 @@ fn main() {
                         };
 
                         if need_download {
-                            download(upstream_url, mirror_path, &file_name[1..]).unwrap();
+                            download(upstream_url, mirror_path, &file_name[1..], retries)?;
                             hash_file_cont = file_sha256(file.as_path());
-                            assert_eq!(Some(chksum_upstream), hash_file_cont.as_deref());
+                            if hash_file_cont.as_deref() != Some(chksum_upstream) {
+                                bail!(
+                                    "checksum mismatch for /{}: expected {}, got {:?}",
+                                    &file_name[1..],
+                                    chksum_upstream,
+                                    hash_file_cont
+                                );
+                            }
                         } else {
                             println!("File {} already downloaded, skipping", file_name);
                         }
@@ -667,21 +772,27 @@ fn main() {
 
         let ext = if is_windows { ".exe" } else { "" };
 
-        if download(
+        if let Err(e) = download(
             upstream_url,
             mirror_path,
             &format!("rustup/dist/{}/rustup-init{}", target, ext),
-        )
-        .is_err()
-        {
-            println!("Failed to fetch rustup-init for target {}, ignored", target);
+            retries,
+        ) {
+            println!(
+                "Failed to fetch rustup-init for target {}, ignored: {e:#}",
+                target
+            );
         }
     }
 
     // Fetch rustup self update
     println!("Downloading rustup self update manifest...");
-    let self_update_manifest_path =
-        download(upstream_url, orig_path, "rustup/release-stable.toml").unwrap();
+    let self_update_manifest_path = download(
+        upstream_url,
+        orig_path,
+        "rustup/release-stable.toml",
+        retries,
+    )?;
 
     let mut self_update_manifest = File::open(self_update_manifest_path.clone()).unwrap();
     let mut self_update_manifest_data = String::new();
@@ -706,17 +817,19 @@ fn main() {
 
         let ext = if is_windows { ".exe" } else { "" };
 
-        if download(
+        if let Err(e) = download(
             upstream_url,
             mirror_path,
             &format!(
                 "rustup/archive/{}/{}/rustup-init{}",
                 self_version, target, ext
             ),
-        )
-        .is_err()
-        {
-            println!("Failed to fetch rustup-init for target {}, ignored", target);
+            retries,
+        ) {
+            println!(
+                "Failed to fetch rustup-init for target {}, ignored: {e:#}",
+                target
+            );
         }
     }
 
@@ -797,6 +910,8 @@ fn main() {
             remove_dir_all(date_dir.path()).unwrap();
         }
     }
+
+    Ok(())
 }
 
 /// Return true if `file_name` is a distribution archive (or its checksum) whose
@@ -880,4 +995,18 @@ pub fn normalize_path(path: &Path) -> PathBuf {
         }
     }
     ret
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retry_delay_grows_exponentially_and_is_capped() {
+        assert_eq!(download_retry_delay(1), std::time::Duration::from_secs(2));
+        assert_eq!(download_retry_delay(2), std::time::Duration::from_secs(4));
+        assert_eq!(download_retry_delay(3), std::time::Duration::from_secs(8));
+        assert_eq!(download_retry_delay(6), MAX_DOWNLOAD_RETRY_DELAY);
+        assert_eq!(download_retry_delay(u32::MAX), MAX_DOWNLOAD_RETRY_DELAY);
+    }
 }
